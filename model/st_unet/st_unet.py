@@ -19,8 +19,8 @@ class DoubleConv(nn.Module):
                 # Build the 2D convolution sequence
         layers = [
             nn.Conv2d(in_channels, mid_channels, kernel_size=kernel_size, padding=kernel_size//2, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True)
+            # nn.BatchNorm2d(mid_channels),     # should this be added?
+            # nn.ReLU(inplace=True)
         ]
         
         if drop_channels and p_drop is not None:
