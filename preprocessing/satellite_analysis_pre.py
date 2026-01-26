@@ -233,7 +233,7 @@ def reshape_images(image, desired_shape=(1000,500), new_padded_class=None):
             right = left + desired_shape[1]
         else:
             left = 0
-            right = current_shape[0]
+            right = current_shape[1]
     else:
         top = 0
         bottom = current_shape[0]
@@ -419,7 +419,7 @@ def save_tot_pixels(train_val_test, reach=1, nodata_value=-1, nonwater_value=0, 
     Output:
            none, it creates a *.csv file which contains the total number of no-data, non-water and water pixels for each image of a given reach
     '''
-    reach_folder = collection + f'_{train_val_test}' + f'_r{reach}'
+    reach_folder = collection #+ f'_{train_val_test}' + f'_r{reach}'
     file_path = os.path.join(directory, reach_folder)
 
     # initiate lists
@@ -486,7 +486,7 @@ def season_average(train_val_test, reach, year, dir_datasets=r'data\satellite', 
     imgs = []
     for month in range(1, 5):
         # get all images from low-flow season
-        folder = os.path.join(dir_datasets, fr'dataset_month{month}')
+        folder = os.path.join(dir_datasets, fr'month_{month}')
         # get all reaches
         for reach_folder in os.listdir(folder):
             if reach_folder.endswith(f'{train_val_test}_r{reach}'):
@@ -580,6 +580,14 @@ def get_good_avg(train_val_test, reach, year, dir_datasets=r'data\satellite', no
            good_avg = 2D np.array, final season average image with only two pixel classes and no NaN value. 
     '''
     avg = season_average(train_val_test, reach, year, dir_datasets, nodata)
+
+    # --- ADD THIS CHECK ---
+    # If avg is a scalar (0-d) or None, it means no images were found.
+    if np.ndim(avg) == 0:
+        print(f"Skipping year {year}: No images found (avg is scalar).")
+        return None # Return None to signal failure
+    # ----------------------
+
     good_avg = replace_nan_with_neighbors_mean(avg, window_size, replace_default)
     good_avg = (good_avg > 0.5).astype(float) # classify as 1 if avg > 0.5, else as 0
     # if need to replace a single image uncomment the following line 
