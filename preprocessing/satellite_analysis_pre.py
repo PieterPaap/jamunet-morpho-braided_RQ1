@@ -378,84 +378,59 @@ def count_all_class_pixels(image, nodata_value=-1, nonwater_value=0, water_value
 
     return no_data, non_water, water
 
-def save_tot_pixels(train_val_test, reach=1, nodata_value=-1, nonwater_value=0, water_value=1,
-                    directory=r'data\satellite\preprocessed', collection=r'JRC_GSW1_4_MonthlyHistory'):
+def save_tot_pixels(input_reach_folder, output_folder, reach_id, prefix='training',
+                    nodata_value=-1, nonwater_value=0, water_value=1):
     '''
-    Create a *.csv file with the total number of pixels for each class of each image. 
-    
-    This function only works for the JRC collection, which has classified images with the following classification:
-                   0: no-data 
-                   1: non-water
-                   2: water
-    
-    Currently, pixel classes are scaled as follows:
-                   -1: no-data
-                   0: non-water
-                   1: water
-
-    Given the current image size (1000 x 500 pixels, representative of ~ 60000 x 30000 km reaches with image resolution of 60 m), the total number of pixels is
-    n_tot = 1000 * 500 =   500 000 pixels.
-
-    Input: 
-          train_val_test = str, specifies for what the images are used for.
-                           available options: 'training', 'validation' and 'testing'
-          reach = int, representing reach number. Number increases going upstream
-                   For training, the available range is 1-28 (included). 
-                   For validation and testing there is only 1 reach
-          nodata_value = int, represent pixel value for no-data class
-                         default: -1, based on updated classes
-                         If using the original classification, this should be set to 0
-          nonwater_value = int, represent pixel value for non-water class
-                           default: 0, based on updated classes
-                           If using the original classification, this should be set to 1
-          water_value = int, represent pixel value for water class
-                        default: 1, based on updated classes
-                        If using the original classification, this should be set to 2
-          directory = str, directory where images are stored
-                      default: r'data\satellite\preprocessed'
-          collection = str, satellite images collection.
-                       default: r'JRC_GSW1_4_MonthlyHistory', the function is implemented to work only with this dataset    
-    
-    Output:
-           none, it creates a *.csv file which contains the total number of no-data, non-water and water pixels for each image of a given reach
+    Reads all .tif images in the input_reach_folder, counts pixels, 
+    and saves a CSV to the output_folder.
     '''
-    reach_folder = collection #+ f'_{train_val_test}' + f'_r{reach}'
-    file_path = os.path.join(directory, reach_folder)
-
-    # initiate lists
+    
+    # Initiate lists
     filenames = []
     nodata_list = []
     nonwater_list = []
     water_list = []
 
-    for filename in os.listdir(file_path):
-       if filename.endswith(".tif") or filename.endswith(".tiff"):
-           # load image as array
-           img = gdal.Open(os.path.join(file_path, filename))
-           img_array = img.ReadAsArray()
-           
-           # calculate total number of pixels
-           no_data, non_water, water = count_all_class_pixels(img_array, nodata_value, nonwater_value, water_value)
-           date_reach, _ = filename.split(f'.tif', 1)
-           
-           # append results
-           filenames.append(date_reach)
-           nodata_list.append(no_data)
-           nonwater_list.append(non_water)
-           water_list.append(water)
+    # Loop through images in the specific reach folder
+    # We sort to ensure chronological order in the CSV
+    files = sorted([f for f in os.listdir(input_reach_folder) if f.endswith(('.tif', '.tiff'))])
+
+    for filename in files:
+        file_path = os.path.join(input_reach_folder, filename)
+        
+        # Load image
+        img_ds = gdal.Open(file_path)
+        if img_ds is None: 
+            continue
+            
+        img_array = img_ds.ReadAsArray()
+        
+        # Count pixels
+        no_data, non_water, water = count_all_class_pixels(img_array, nodata_value, nonwater_value, water_value)
+        
+        # Extract date for the CSV (removes .tif extension)
+        date_reach = filename.split('.tif')[0]
+        
+        # Append results
+        filenames.append(date_reach)
+        nodata_list.append(no_data)
+        nonwater_list.append(non_water)
+        water_list.append(water)
     
-    # zip lists
+    # Create DataFrame
     total_pixels = list(zip(filenames, nodata_list, nonwater_list, water_list))
-    output_file = fr'{train_val_test}_r{reach}_allpixels.csv'
-    
-    # create dataframe
     df = pd.DataFrame(total_pixels)
-    name_cols = ['Date image', 'no-data: 0', 'non-water: 1', 'water: 2'] # first column contains info on usage and reach number as well
-    df.columns = name_cols
-    output_path = os.path.join(file_path, output_file)
     
-    # save to .csv
-    df.to_csv(output_path)
+    # Rename columns
+    name_cols = ['Date_Reach', f'no-data: {nodata_value}', f'non-water: {nonwater_value}', f'water: {water_value}']
+    df.columns = name_cols
+    
+    # Define Output Filename: e.g. "training_r8_allpixels.csv"
+    output_filename = f'{prefix}_{reach_id}_allpixels.csv'
+    output_path = os.path.join(output_folder, output_filename)
+    
+    # Save to .csv
+    df.to_csv(output_path, index=False)
     return None
 
 def season_average(train_val_test, reach, year, dir_datasets=r'data\satellite', nodata=-1):
