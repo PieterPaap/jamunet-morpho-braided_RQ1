@@ -42,11 +42,8 @@ def get_predictions(model, input_dataset, device='cuda:0'):
     return predictions.squeeze(1) 
 
 def training_unet(model, loader, optimizer, nonwater=0, water=1, pixel_size=60, water_threshold=0.5, 
-                  device='cuda:0', loss_f='BCE', physics=False, alpha_er = 1e-2, alpha_dep = 1e-3, loss_er_dep='Huber'):
+                  device='cuda:0', loss_f='BCE', physics=False, alpha_er=1e-2, alpha_dep=1e-3, loss_er_dep='Huber'):
     '''
-    Training loop for the deep-learning model. Allows to choose the loss function for binary classification.
-    Enables the inclusion of physics-induced loss terms (regression losses).
-
     Inputs: 
            model = class, deep-learning model to be trained
            loader = torch.utils.data.DataLoader element, data loader that combines a dataset 
@@ -81,50 +78,50 @@ def training_unet(model, loader, optimizer, nonwater=0, water=1, pixel_size=60, 
     Output: 
            losses = array of scalars, training losses 
     '''
+
+    # Move model only if it's not already on the target device
     model.to(device)
-    model.train() # specifies the model is in training mode
+    model.train()
 
-    losses = []
-    # split in batches
+    epoch_losses = []
+    
     for batch in loader:
-        input = batch[0].to(device)
-        target = batch[1].to(device)
+        # These lines are safe even if data is already on GPU
+        input_data = batch[0].to(device, non_blocking=True)
+        target = batch[1].to(device, non_blocking=True)
 
-        # get predictions
-        predictions = get_predictions(model, input, device=device)
+        # 1. Forward pass
+        predictions = get_predictions(model, input_data, device=device)
         
-        # compute binary classification loss
+        # 2. Compute binary classification loss
         binary_loss = choose_loss(predictions, target, loss_f)
         
-        # physics-induced loss terms
+        # 3. Physics-induced loss terms
         if physics:
-            # need binary predictions
-            binary_predictions = (predictions >= water_threshold).float()
+            # IMPORTANT: Use detach() or a context manager if binary_predictions 
+            # shouldn't propagate gradients through the area calculation logic
+            with torch.no_grad():
+                binary_predictions = (predictions >= water_threshold).float()
 
-            # get real and predicted total areas of erosion and deposition
-            real_erosion_deposition = get_erosion_deposition(input[0][-1], target, nonwater, water, pixel_size)
-            predicted_erosion_deposition = get_erosion_deposition(input[0][-1], binary_predictions, nonwater, water, pixel_size)
+            real_er_dep = get_erosion_deposition(input_data[:, -1], target, nonwater, water, pixel_size)
+            pred_er_dep = get_erosion_deposition(input_data[:, -1], binary_predictions, nonwater, water, pixel_size)
             
-            # compute regression losses
-            erosion_loss = choose_er_dep_loss(predicted_erosion_deposition[0], real_erosion_deposition[0], loss_er_dep)
-            deposition_loss = choose_er_dep_loss(predicted_erosion_deposition[1], real_erosion_deposition[1], loss_er_dep)
+            erosion_loss = choose_er_dep_loss(pred_er_dep[0], real_er_dep[0], loss_er_dep)
+            deposition_loss = choose_er_dep_loss(pred_er_dep[1], real_er_dep[1], loss_er_dep)
             
-            # sum loss terms with individual weights
             total_loss = binary_loss + alpha_er * erosion_loss + alpha_dep * deposition_loss 
-            losses.append(total_loss.cpu().detach())
-        
         else:
             total_loss = binary_loss
-            losses.append(total_loss.cpu().detach())
 
-        # backpropagate and update weights
-        optimizer.zero_grad(set_to_none=True)   # reset the computed gradients
-        total_loss.backward()                   # compute the gradients using backpropagation
-        optimizer.step()                        # update the weights with the optimizer
+        # 4. Backpropagation
+        optimizer.zero_grad(set_to_none=True)
+        total_loss.backward()
+        optimizer.step()
         
-    losses = np.array(losses).mean() 
+        # Use .item() to get the scalar and avoid keeping the whole computation graph in memory
+        epoch_losses.append(total_loss.item())
 
-    return losses
+    return np.mean(epoch_losses)
 
 def validation_unet(model, loader, nonwater=0, water=1, device='cuda:0', loss_f='BCE', water_threshold=0.5):
     '''
@@ -168,8 +165,8 @@ def validation_unet(model, loader, nonwater=0, water=1, device='cuda:0', loss_f=
     with torch.no_grad(): # specifies gradient is not computed
         # split in batches
         for batch in loader:
-            input = batch[0].to(device)
-            target = batch[1].to(device)
+            input = batch[0].to(device, non_blocking=True)
+            target = batch[1].to(device, non_blocking=True)
     
             # get predictions
             predictions = get_predictions(model, input, device=device)
@@ -180,7 +177,7 @@ def validation_unet(model, loader, nonwater=0, water=1, device='cuda:0', loss_f=
             # compute metrics
             accuracy, precision, recall, f1_score, csi_score = compute_metrics(binary_predictions, target, nonwater, water)
             
-            losses.append(loss.cpu().detach())
+            losses.append(loss.item())
             accuracies.append(accuracy)
             precisions.append(precision)
             recalls.append(recall)
