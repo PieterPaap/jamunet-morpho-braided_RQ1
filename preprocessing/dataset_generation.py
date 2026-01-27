@@ -76,34 +76,78 @@ def create_dir_list(train_val_test, dir_folders=r'data\satellite\dataset', colle
     list_dir.sort(key=lambda x: int(x.split(f'_{train_val_test}_r')[-1]))
     return list_dir
 
-def create_list_images(train_val_test, reach, dir_folders=r'data\satellite\dataset', collection=r'JRC_GSW1_4_MonthlyHistory'):
-    '''
-    Rreturn the paths of the satellite images present within a folder given use and reach. 
-    It will be used later for loading and creating the dataset.
+# def create_list_images(train_val_test, reach, dir_folders=r'data\satellite\dataset', collection=r'JRC_GSW1_4_MonthlyHistory'):
+#     '''
+#     Rreturn the paths of the satellite images present within a folder given use and reach. 
+#     It will be used later for loading and creating the dataset.
 
-    Inputs:
-           train_val_test = str, specifies what the images are used for.
-                            available options: 'training', 'validation' and 'testing'
-           reach = int, representing reach number. Number increases going upstream
-                   For training, the available range is 1-28 (included). 
-                   For validation and testing there is only 1 reach
-           dir_folders = str, directory where folders are stored
-                         default: r'data\satellite\dataset'
-           collection = str, specifies the satellite images collection.
-                        default: r'JRC_GSW1_4_MonthlyHistory', the function is implemented to work only with this dataset
+#     Inputs:
+#            train_val_test = str, specifies what the images are used for.
+#                             available options: 'training', 'validation' and 'testing'
+#            reach = int, representing reach number. Number increases going upstream
+#                    For training, the available range is 1-28 (included). 
+#                    For validation and testing there is only 1 reach
+#            dir_folders = str, directory where folders are stored
+#                          default: r'data\satellite\dataset'
+#            collection = str, specifies the satellite images collection.
+#                         default: r'JRC_GSW1_4_MonthlyHistory', the function is implemented to work only with this dataset
     
-    Outputs:
-            list_dir_images = list, contains the path for each image of the dataset needed for loading it                     
+#     Outputs:
+#             list_dir_images = list, contains the path for each image of the dataset needed for loading it                     
+#     '''
+#     # create folder path
+#     folder = os.path.join(str(dir_folders), collection + rf'_{train_val_test}_r{reach}')
+#     list_dir_images = []
+#     # loop through images of that folder
+#     for image in os.listdir(folder):
+#         # get only .tif files
+#         if image.endswith('.tif'):
+#             path_image = os.path.join(folder, image)
+#             list_dir_images.append(path_image)
+#     return list_dir_images
+
+def create_list_images(train_val_test, reach, dir_folders, collection):
     '''
-    # create folder path
-    folder = os.path.join(str(dir_folders), collection + rf'_{train_val_test}_r{reach}')
+    Robust version: Searches for the folder ending in '_r{reach}' 
+    instead of guessing the full name.
+    '''
     list_dir_images = []
-    # loop through images of that folder
-    for image in os.listdir(folder):
-        # get only .tif files
+    
+    if not os.path.exists(dir_folders):
+        print(f"Error: Directory not found: {dir_folders}")
+        return []
+
+    target_folder_path = None
+    
+    # Search for folder ending in "_r1" (e.g.)
+    # If the user passed a filter string (like "training" for Jamuna), check for it.
+    # Otherwise, just match the reach ID.
+    for folder_name in os.listdir(dir_folders):
+        if folder_name.endswith(f'_r{reach}'):
+            # Optional: Check if the usage tag (train/val/test) matches if it exists in folder name
+            if train_val_test in folder_name or train_val_test == 'training': 
+                # Note: We default 'training' to match generalized folders often found in JRC data
+                target_folder_path = os.path.join(dir_folders, folder_name)
+                break
+            
+    if target_folder_path is None:
+        # Fallback: Just try to find the reach ID ignoring the usage tag
+        for folder_name in os.listdir(dir_folders):
+            if folder_name.endswith(f'_r{reach}'):
+                target_folder_path = os.path.join(dir_folders, folder_name)
+                break
+
+    if target_folder_path is None:
+        # print(f"Error: No folder found for reach {reach} in {dir_folders}")
+        return []
+
+    # Collect .tif images
+    sorted_files = sorted(os.listdir(target_folder_path))
+    for image in sorted_files:
         if image.endswith('.tif'):
-            path_image = os.path.join(folder, image)
+            path_image = os.path.join(target_folder_path, image)
             list_dir_images.append(path_image)
+            
     return list_dir_images
 
 def create_datasets(train_val_test, reach, year_target=5, nodata_value=-1, dir_folders=r'data\satellite\dataset', 
@@ -194,33 +238,35 @@ def combine_datasets(train_val_test, reach, year_target=5, nonwater_threshold=48
            filtered_input_dataset, filtered_target_dataset = lists, contain adequate image combinations for input and target datasets, respectively,
                                                              based on `non-water` threshold
     '''
-    input_dataset, target_dataset = create_datasets(train_val_test, reach, year_target, nodata_value, dir_folders, collection, scaled_classes)
+    
+    # 1. Create the raw dataset first
+    input_dataset, target_dataset = create_datasets(
+        train_val_test, reach, year_target, nodata_value, 
+        dir_folders, collection, scaled_classes
+    )
 
-    filtered_input_dataset, filtered_target_dataset = [], []
-    # filter pairs based on the specified threshold
-    for input_images, target_image in zip(input_dataset, target_dataset):
-        input_combs = []
-        # check input images
+    filtered_input_dataset = []
+    filtered_target_dataset = []
+
+    # 2. Filter logic
+    for input_images, target_image_seq in zip(input_dataset, target_dataset):
+        is_input_good = True
         for img in input_images:
-            nonwater_count = count_pixels(img, nonwater_value) < nonwater_threshold 
-            input_combs.append(nonwater_count)
+            # Check if image is mostly non-water
+            if np.sum(img == nonwater_value) >= nonwater_threshold:
+                is_input_good = False
+                break
+        
+        if is_input_good:
+            target_img = target_image_seq[0]
+            if np.sum(target_img == nonwater_value) < nonwater_threshold:
+                filtered_input_dataset.append(input_images)
+                filtered_target_dataset.append(target_img)
 
-        # check if input images are all suitable  
-        if all(input_combs):
-            # check target images
-            target_nonwater_thr = count_pixels(target_image[0], nonwater_value) < nonwater_threshold
-            if target_nonwater_thr:
-                # convert input images to tensor
-                input_tensor = [img for img in input_images]
-                # convert target image to tensor
-                target_tensor = target_image[0]
-                
-                filtered_input_dataset.append(input_tensor)
-                filtered_target_dataset.append(target_tensor)
     return filtered_input_dataset, filtered_target_dataset
 
-def create_full_dataset(train_val_test, year_target=5, nonwater_threshold=480000, nodata_value=-1, nonwater_value=0, dir_folders=r'data\satellite\dataset', 
-                        collection=r'JRC_GSW1_4_MonthlyHistory', scaled_classes=True, device='cuda:0', dtype=torch.int64):
+def create_full_dataset(train_val_test, year_target=5, nonwater_threshold=480000, nodata_value=-1, nonwater_value=0, dir_folders=None, name_filter=None,
+                        collection=r'JRC_GSW1_4_MonthlyHistory', scaled_classes=True, device='cuda:0', dtype=torch.float32):
     '''
     Generate the full dataset for the given use, combining all reaches.
     Stack all different pairs within one use in order to have the dataset ready for the training, validation and testing of the model.
@@ -252,28 +298,112 @@ def create_full_dataset(train_val_test, year_target=5, nonwater_threshold=480000
     Output:
            dataset = TensorDataset, contains all coupled input-target samples for each reach and use
     '''
-    # initialize stacked dictionaries
-    stacked_dict = {'input': [], 'target': []}
-    for folder in os.listdir(dir_folders):
-        if train_val_test in folder:
-            # get all available reaches
-            reach_id = folder.split('_r',1)[1]
-            inputs, target = combine_datasets(train_val_test, int(reach_id), year_target, nonwater_threshold, 
-                                              nodata_value, nonwater_value, dir_folders, collection, scaled_classes)
-            stacked_dict['input'].extend(inputs)
-            stacked_dict['target'].extend(target)
+    
+    all_inputs = []
+    all_targets = []
+    
+    if not os.path.exists(dir_folders):
+        print(f"Path not found: {dir_folders}")
+        return TensorDataset(torch.empty(0), torch.empty(0))
+
+    potential_folders = [f for f in os.listdir(dir_folders) if os.path.isdir(os.path.join(dir_folders, f))]
+    
+    count_reaches = 0
+    
+    for folder_name in potential_folders:
+        # FILTER LOGIC: If name_filter is set (e.g. 'validation'), folder MUST contain it
+        if name_filter and name_filter not in folder_name:
+            continue
+
+        try:
+            reach_id = int(folder_name.split('_r')[-1])
+        except:
+            continue
+            
+        # Use name_filter as the label if it exists, otherwise default to 'training'
+        use_label = name_filter if name_filter else train_val_test
+        
+        inputs, targets = combine_datasets(
+            train_val_test=use_label, 
+            reach=reach_id, 
+            year_target=year_target, 
+            nonwater_threshold=nonwater_threshold,
+            nodata_value=nodata_value, 
+            nonwater_value=nonwater_value, 
+            dir_folders=dir_folders, 
+            collection=collection, 
+            scaled_classes=scaled_classes
+        )
+        
+        if len(inputs) > 0:
+            all_inputs.extend(inputs)
+            all_targets.extend(targets)
+            count_reaches += 1
+
+    if not all_inputs:
+        return TensorDataset(torch.empty(0), torch.empty(0))
+
+    # Convert to Tensor
+    input_tensor = torch.tensor(np.array(all_inputs), dtype=dtype, device=device)
+    target_tensor = torch.tensor(np.array(all_targets), dtype=dtype, device=device)
+    
+    return TensorDataset(input_tensor, target_tensor)
+
+# def create_full_dataset(train_val_test, year_target=5, nonwater_threshold=480000, nodata_value=-1, nonwater_value=0, dir_folders=r'data\satellite\dataset', 
+#                         collection=r'JRC_GSW1_4_MonthlyHistory', scaled_classes=True, device='cuda:0', dtype=torch.int64):
+#     '''
+#     Generate the full dataset for the given use, combining all reaches.
+#     Stack all different pairs within one use in order to have the dataset ready for the training, validation and testing of the model.
+
+#     Inputs:
+#            train_val_test = str, specifies what the images are used for.
+#                             available options: 'training', 'validation' and 'testing'
+#            year_target = int, sets the year predicted after a sequence of input years.
+#                          default: 5, input dataset is made of 4 images and 5th year is the predicted one
+#            nonwater_threshold = int, min amount of `non-water` pixels allowed in the inputs-target combinations
+#                                 default: 480000, necessary to filter out only the fully `non-water` images 
+#            nodata_value = int, represents pixel value of no data class.
+#                           default: -1, based on the updated pixel classes. 
+#                           If `scaled_classes` = False, this should be set to 0
+#            nonwater_value = int, represents pixel value of non-water class.
+#                             default: 0, based on the updated pixel classes. 
+#                             If `scaled_classes` = False, this should be set to 1
+#            dir_folders = str, directory where folders are stored
+#                          default: r'data\satellite\dataset'
+#            collection = str, specifies the satellite images collection.
+#                         default: r'JRC_GSW1_4_MonthlyHistory', the function is implemented to work only with this dataset
+#            scaled_classes = bool, sets whether pixel classes are scaled to the range [-1, 1] or kept within the original one [0, 2]
+#                             default: True, pixel classes are scaled (recommended).
+#            device = str, specifies device where memory is allocated for performing the computations
+#                     default: 'cuda: 0' (GPU), other availble option: 'cpu'
+#            dtype = class, specifies the data type for torch.tensor method.
+#                    default: torch.int64, it also accepts `torch.float32` to allow gradient computation and backpropagation
+    
+#     Output:
+#            dataset = TensorDataset, contains all coupled input-target samples for each reach and use
+#     '''
+#     # initialize stacked dictionaries
+#     stacked_dict = {'input': [], 'target': []}
+#     for folder in os.listdir(dir_folders):
+#         if train_val_test in folder:
+#             # get all available reaches
+#             reach_id = folder.split('_r',1)[1]
+#             inputs, target = combine_datasets(train_val_test, int(reach_id), year_target, nonwater_threshold, 
+#                                               nodata_value, nonwater_value, dir_folders, collection, scaled_classes)
+#             stacked_dict['input'].extend(inputs)
+#             stacked_dict['target'].extend(target)
        
-    # create tensors
-    if dtype is None:
-        input_tensor = torch.tensor(stacked_dict['input'])        # removed device=device
-        target_tensor = torch.tensor(stacked_dict['target'])      # removed device=device
-    else:
-        input_tensor = torch.tensor(stacked_dict['input'], dtype=dtype)       # removed device=device
-        target_tensor = torch.tensor(stacked_dict['target'], dtype=dtype)     # removed device=device
+#     # create tensors
+#     if dtype is None:
+#         input_tensor = torch.tensor(stacked_dict['input'])        # removed device=device
+#         target_tensor = torch.tensor(stacked_dict['target'])      # removed device=device
+#     else:
+#         input_tensor = torch.tensor(stacked_dict['input'], dtype=dtype)       # removed device=device
+#         target_tensor = torch.tensor(stacked_dict['target'], dtype=dtype)     # removed device=device
 
     
-    dataset = TensorDataset(input_tensor, target_tensor)
-    return dataset
+#     dataset = TensorDataset(input_tensor, target_tensor)
+#     return dataset
 
 # ----------------------------------------- # 
 # TEMPORAL SPLIT #
