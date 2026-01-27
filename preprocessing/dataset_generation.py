@@ -150,6 +150,59 @@ def create_list_images(train_val_test, reach, dir_folders, collection):
             
     return list_dir_images
 
+# def create_datasets(train_val_test, reach, year_target=5, nodata_value=-1, dir_folders=r'data\satellite\dataset', 
+#                     collection=r'JRC_GSW1_4_MonthlyHistory', scaled_classes=True):
+#     '''
+#     Create the input and target dataset for each specific use and reach. Return two lists of lists. 
+#     The input list has n-elements, with n depending on the year of prediction: 
+#     if fifth year is predicted the list has four elements. 
+#     The target list has one element (the year of prediction).
+
+#     n-to-1 predictions
+
+#     Generate binary images by replaciong `no-data` pixels with the average images stored in the .csv files available in 'data\satellite\averages'. 
+#     The average images are computed with the function 'get_good_avg' stored in the module 'satellite_analysis_pre'.  
+    
+#     Inputs: 
+#            train_val_test = str, specifies what the images are used for.
+#                             available options: 'training', 'validation' and 'testing'
+#            reach = int, representing reach number. Number increases going upstream.
+#                    For training, the available range is 1-28 (included)
+#                    For validation and testing there is only 1 reach
+#            year_target = int, sets the year predicted after a sequence of input years.
+#                          default: 5, input dataset is made of 4 images and 5th year is the predicted one
+#            nodata_value = int, represents pixel value of no-data class.
+#                           default: -1, based on the updated pixel classes. 
+#                           If `scaled_classes` = False, this should be set to 0
+#            dir_folders = str, directory where folders are stored
+#                          default: r'data\satellite\dataset'
+#            collection = str, specifies the satellite images collection.
+#                         default: r'JRC_GSW1_4_MonthlyHistory', the function is implemented to work only with this dataset
+#            scaled_classes = bool, sets whether pixel classes are scaled to the range [-1, 1] or kept within the original one [0, 2]
+#                             default: True, pixel classes are scaled (recommended). 
+    
+#     Outputs:
+#             input_dataset, target_dataset = lists of lists, contain the input and target images respectively  
+#     '''
+#     # create list of images (paths)
+#     list_dir_images = create_list_images(train_val_test, reach, dir_folders, collection)
+#     # load list of images (arrays)
+#     images_array = [load_image_array(list_dir_images[i], scaled_classes=scaled_classes) for i in range(len(list_dir_images))]
+#     # load season averages
+#     avg_imgs = [load_avg(train_val_test, reach, year, dir_averages=r'data\satellite\averages') for year in range(1988, 1988 + len(images_array))]
+#     # replace missing data - images are now binary!
+#     good_images_array = [np.where(image==nodata_value, avg_imgs[i], image) for i, image in enumerate(images_array)]
+        
+#     input_dataset = []
+#     target_dataset = []
+    
+#     # loop through images to append these in the originally empty lists
+#     for i in range(len(good_images_array)-year_target+1): # add +1 at the end to include last available year
+#         input_dataset.append(good_images_array[i:i+year_target-1])
+#         target_dataset.append([good_images_array[i+year_target-1]])
+
+#     return input_dataset, target_dataset
+
 def create_datasets(train_val_test, reach, year_target=5, nodata_value=-1, dir_folders=r'data\satellite\dataset', 
                     collection=r'JRC_GSW1_4_MonthlyHistory', scaled_classes=True):
     '''
@@ -184,22 +237,75 @@ def create_datasets(train_val_test, reach, year_target=5, nodata_value=-1, dir_f
     Outputs:
             input_dataset, target_dataset = lists of lists, contain the input and target images respectively  
     '''
-    # create list of images (paths)
+    # 1. Get Images
     list_dir_images = create_list_images(train_val_test, reach, dir_folders, collection)
-    # load list of images (arrays)
-    images_array = [load_image_array(list_dir_images[i], scaled_classes=scaled_classes) for i in range(len(list_dir_images))]
-    # load season averages
-    avg_imgs = [load_avg(train_val_test, reach, year, dir_averages=r'data\satellite\averages') for year in range(1988, 1988 + len(images_array))]
-    # replace missing data - images are now binary!
-    good_images_array = [np.where(image==nodata_value, avg_imgs[i], image) for i, image in enumerate(images_array)]
+    
+    if not list_dir_images:
+        return [], [] 
+
+    # 2. Load Images into Arrays
+    images_array = []
+    loaded_years = []
+
+    for idx, path in enumerate(list_dir_images):
+        img = load_image_array(path, scaled_classes=scaled_classes)
+        if img is not None:
+            images_array.append(img)
+            
+            # Extract year safely
+            filename = os.path.basename(path)
+            try:
+                # Find the 4-digit year in the filename
+                parts = filename.replace('-', '_').split('_')
+                year = next(p for p in parts if p.isdigit() and len(p) == 4)
+                loaded_years.append(int(year))
+            except:
+                loaded_years.append(1988 + idx)
+
+    # 3. Load Averages (FIXED)
+    # ---------------------------------------------------------
+    # The input 'dir_folders' is usually: .../{River}_images/preprocessed/month_X
+    # We need to step up to {River}_images and then down to 'averages'
+    
+    # Step 1: Go up from 'month_X' -> 'preprocessed' (or 'dataset')
+    parent_dir = os.path.dirname(dir_folders)
+    # Step 2: Go up from 'preprocessed' -> '{River}_images'
+    river_base_dir = os.path.dirname(parent_dir)
+    # Step 3: Construct the correct averages path
+    dir_averages_dynamic = os.path.join(river_base_dir, 'averages')
+    # ---------------------------------------------------------
+
+    avg_imgs = []
+    for year in loaded_years:
+        # Pass the dynamic path here
+        avg = load_avg(train_val_test, reach, year, dir_averages=dir_averages_dynamic)
+        
+        if avg is None:
+            # Create a fallback zero-array if average is missing to prevent crash
+            if len(images_array) > 0:
+                avg = np.zeros_like(images_array[0])
+            else:
+                return [], [] # Should not happen if images loaded
+                
+        avg_imgs.append(avg)
+
+    # 4. Replace No-Data
+    good_images_array = [np.where(image == nodata_value, avg_imgs[i], image) 
+                         for i, image in enumerate(images_array)]
         
     input_dataset = []
     target_dataset = []
     
-    # loop through images to append these in the originally empty lists
-    for i in range(len(good_images_array)-year_target+1): # add +1 at the end to include last available year
-        input_dataset.append(good_images_array[i:i+year_target-1])
-        target_dataset.append([good_images_array[i+year_target-1]])
+    # 5. Create Sequences
+    if len(good_images_array) < year_target:
+        return [], []
+
+    for i in range(len(good_images_array) - year_target + 1):
+        input_seq = good_images_array[i : i + year_target - 1]
+        target_seq = [good_images_array[i + year_target - 1]]
+        
+        input_dataset.append(input_seq)
+        target_dataset.append(target_seq)
 
     return input_dataset, target_dataset
 
