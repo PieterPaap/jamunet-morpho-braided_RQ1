@@ -16,6 +16,10 @@ All this data can be found in "data" -> "satellite" -> "preprocessed_PIETER" -> 
 <br>
 
 The edited code: <br>
+<br>
+BE WARY, there are alot of lines with # in de .py files scroll down to see the active parts.
+<br>
+
 In "preprocessing" the "dataset_generation" as edited a little bit to make de dataloader work, because it did not like my changes.
 
 In "model" -> "lazydata.py" this is a seperate .py file for the dataloading, loading the data takes alot of time, so i implemented "num_workers" to load the data faster. Each worker starts a python instance to load the data. So i made this a seperate small file to keep the overhead small.
