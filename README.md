@@ -1,24 +1,23 @@
-# JamUNet: predicting the morphological changes of braided sand-bed rivers with deep learning
+# JamUNet: Diversification of training data using new rivers.
 
 <table>
   <tr>
     <td>
-      <img src=".\images\1994-01-25.png" width="1000" alt="Brahmaputra-Jamuna River">
+      <img src="./images/1994-01-25.png" width="1000" alt="Brahmaputra-Jamuna River">
     </td>
-    <td>
+    <td style="vertical-align: top; padding-left: 20px;">
       <p style="font-size: 16px;">
-        This repository stores the data, code, and other files necessary for the completion of the Master's thesis of <a href="https://nl.linkedin.com/in/antonio-magherini-4349b2229">Antonio Magherini</a>, student of the MSc Civil Engineering program - Hydraulic Engineering track, with a specialisation in River Engineering 
-        at the <a href="https://www.tudelft.nl/citg">Faculty of Civil Engineering and Geosciences</a> of Delft University of Technology (TU Delft).
+        This repository is forked from the original repository by Antonio Magherini, which can be found in the 
+        <a href="https://repository.tudelft.nl/record/uuid:38ea0798-dd3d-4be2-b937-b80621957348">TU Delft repository</a>. 
+        This updated version adopts changes/added files in the following folders:
       </p>
-      <p style="font-size: 16px;">
-        The thesis was carried out in collaboration with <a href="https://www.deltares.nl/en">Deltares</a>. The manuscript can be found at <a href="https://repository.tudelft.nl/record/uuid:38ea0798-dd3d-4be2-b937-b80621957348">TU Delft repository</a>.
-      </p>
-      <p style="font-size: 16px;">
-        For any information, feel free to contact the author at: <a href="mailto:antonio.magherini@epfl.ch"><em>antonio.magherini@epfl.ch</em></a>.
-      </p>
-      <p style="margin-top: 100px;">
-        <em>The image represents the Brahmaputra-Jamuna River at the border between India and Bangladesh. The image was taken on January 25, 1994. It was retrieved from <a href="https://earthengine.google.com/">Google Earth Engine</a> <a href="https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LT05_C02_T1_L2">USGS Landsat 5 collection</a>.</em>
-      </p>
+      <ul style="font-size: 14px; line-height: 1.6;">
+        <li><strong>preprocessing</strong>: In <code>dataset_generation_modified.py</code> improved path handling and fault-tolerance for missing data.</li>
+        <li><strong>preprocessing</strong>: In <code>satellite_analysis_pre.py</code>: Updated average loading logic.</li>
+        <li><strong>preliminary</strong>: In <code>preliminary/edit_satellite_img.ipynb</code> the pipeline to add new river data was simplified to make it easier for future contributers to add new rivers.</li>
+        <li><strong>postprocessing</strong>: In <code>plot_results.py</code>Enhanced visualization for batch-wise metrics.</li>
+        <li><strong>models/st_unet</strong>: In <code>st_unet_3D</code> the new full 3D model was implemented (no time collapse in the bottleneck).</li>
+      </ul>
     </td>
   </tr>
 </table>
@@ -28,12 +27,13 @@
 ## Repository structure
 
 The structure of this repository is the following:
-- <code>benchmarks</code>, contains modules and notebooks of the benchmark models used for comparison;
 - <code>data</code>, contains raw data (satellite images, river variables);
 - <code>gee</code>, contains the scripts as <code>.js</code> files necessary for exporting the images from Google Earth Engine; (work in progress)
-- <code>images</code>, contains the images shown in the thesis report and other documents; (to be added soon)
-- <code>model</code>, contains the modules and noteboooks with the deep-learning model;
-- <code>other</code>, contains documents, images, and other files used during the project;
+- <code>images</code>, contains the images shown in the thesis report and other documents;
+- <code>model</code>, contains the modules and notebooks with the deep-learning model;
+- <code>model_diversification</code>, contains experiments focused on diversifying the training set across different river systems;
+- <code>model_extra_months</code>, contains investigations into using extended temporal sequences for prediction;
+- <code>model_informativeness</code>, contains modules analyzing the information density and feature importance of the input data;
 - <code>postprocessing</code>, contains the modules used for the data postprocessing;
 - <code>preliminary</code>, contains the notebooks with the preliminary data analysis, satellite image visualization, preprocessing steps, and other examples;
 - <code>preprocessing</code>, contains the modules used for the data preprocessing.
@@ -50,30 +50,5 @@ To activate the environment follow these steps:
 - open the anaconda prompt;
 - run <code>conda env create -f braided.yml</code>;
 - verify that the environment is correctly installed by running <code>conda env list</code> and checking the environment exists;
-- activate the environment by running <code>conda activate braided</code>;
+- activate the environment by running <code>conda activate braided_env_base</code>;
 - deactivate the environment by running <code>conda deactivate</code>;
-
----
-
-## Cite
-
-Please cite the [Master thesis](https://repository.tudelft.nl/record/uuid:38ea0798-dd3d-4be2-b937-b80621957348) as:
-
-```
-@mastersthesis{magherini2024,
-author = {Magherini, A.},
-title = {{JamUNet: predicting the morphological changes of braided sand-bed rivers with deep learning}},
-school = {{Delft University of Technology}},
-year = {2024},
-month = {10},
-howpublished = {\url{https://repository.tudelft.nl/record/uuid:38ea0798-dd3d-4be2-b937-b80621957348}}
-}
-```
-<!-- 
-<p align="center" style="margin-top: 1px;"> 
-    <img src=".\images\1994-01-25.png" width="400"> 
-</p>
-
-<p align="center">
-    <em>Brahmaputra-Jamuna River at the border between India and Bangladesh. The image was retrieved<br>from <a href="https://earthengine.google.com/">Google Earth Engine</a> <a href="https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LT05_C02_T1_L2">USGS Landsat 5 collection</a>. The image was taken on January 25, 1994.</em>
-</p> -->
