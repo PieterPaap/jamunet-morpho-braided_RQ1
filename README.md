@@ -12,6 +12,7 @@
         This updated version adopts changes/added files in the following folders:
       </p>
       <ul style="font-size: 14px; line-height: 1.6;">
+        <li><strong>gee</strong>: Added the <code>GEE_landsat_export.ipynb</code> file to automate the .tiff exporting process.</li>
         <li><strong>preprocessing</strong>: In <code>dataset_generation_modified.py</code> improved path handling and fault-tolerance for missing data.</li>
         <li><strong>preprocessing</strong>: In <code>satellite_analysis_pre.py</code>: Updated average loading logic.</li>
         <li><strong>preliminary</strong>: In <code>preliminary/edit_satellite_img.ipynb</code> the pipeline to add new river data was simplified to make it easier for future contributers to add new rivers.</li>
